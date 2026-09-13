@@ -1,0 +1,93 @@
+name: Build Cagan IP TV v0.5 APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Repair Gradle Wrapper
+        run: |
+          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "Gradle Wrapper eksik veya bozuk. Yeniden oluşturuluyor..."
+
+            rm -f gradlew
+            rm -f gradlew.bat
+            rm -rf gradle/wrapper
+
+            gradle wrapper --gradle-version 8.9
+          else
+            echo "Gradle Wrapper mevcut."
+          fi
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Force Gradle Wrapper 8.9
+        run: ./gradlew wrapper --gradle-version 8.9
+
+      - name: Show Java version
+        run: java -version
+
+      - name: Show Gradle version
+        run: ./gradlew --version
+
+      - name: Check Remote Config Secret
+        env:
+          CAGAN_CONFIG_URL: ${{ secrets.CAGAN_CONFIG_URL }}
+        run: |
+          if [ -z "$CAGAN_CONFIG_URL" ]; then
+            echo "ERROR: CAGAN_CONFIG_URL tanımlı değil."
+            exit 1
+          else
+            echo "CAGAN_CONFIG_URL tanımlı."
+          fi
+
+      - name: Clean project
+        run: ./gradlew clean
+
+      - name: Build Debug APK
+        env:
+          CAGAN_CONFIG_URL: ${{ secrets.CAGAN_CONFIG_URL }}
+        run: |
+          ./gradlew :app:assembleDebug \
+            -PCAGAN_CONFIG_URL="$CAGAN_CONFIG_URL" \
+            --stacktrace
+
+      - name: Show generated APK files
+        if: success()
+        run: |
+          echo "Generated APK files:"
+          find . -type f -name "*.apk" -print
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cagan-IP-TV-v0.5
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
